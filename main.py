@@ -9,6 +9,7 @@ from config import (
     BILATERAL_D, BILATERAL_SIGMA_COLOR, BILATERAL_SIGMA_SPACE,
     MIN_REGION_AREA,
     LINE_COLOR, LINE_THICKNESS,
+    FONT_COLOR, FONT_THICKNESS, MIN_AREA_FOR_LABEL,
 )
 
 from src.image_io import load_image, save_image
@@ -19,6 +20,7 @@ from src.segmentation import segment_image, create_label_map
 from src.color_categorization import categorize_centers
 from src.region_detection import detect_regions, remove_small_regions
 from src.contour_extraction import extract_contours, draw_contours_on_canvas
+from src.number_placement import calculate_centroids, place_numbers
 from src.visualization import save_comparison
 
 
@@ -82,8 +84,13 @@ def main():
     canvas = draw_contours_on_canvas(smoothed.shape, contour_list, LINE_COLOR, LINE_THICKNESS)
     save_image(canvas, "canvas_outline.png", OUTPUT_DIR)
 
+    # 9. Numara yerleştirme
+    print("\n[ADIM 9] Numaralar yerleştiriliyor...")
+    centroids = calculate_centroids(region_map, label_map, MIN_AREA_FOR_LABEL)
+    numbered_canvas = place_numbers(canvas, centroids, FONT_COLOR, FONT_THICKNESS)
+    save_image(numbered_canvas, "canvas_numbered.png", OUTPUT_DIR)
+
     # --- Buradan sonrası adım adım eklenecek ---
-    # ADIM 9: Numara yerleştirme
     # ADIM 10: Tuval + legend render
 
     print("\n" + "=" * 55)
