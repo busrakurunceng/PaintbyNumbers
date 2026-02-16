@@ -7,6 +7,7 @@
 from config import (
     IMAGE_PATH, OUTPUT_DIR, K_CLUSTERS, RANDOM_STATE,
     BILATERAL_D, BILATERAL_SIGMA_COLOR, BILATERAL_SIGMA_SPACE,
+    MIN_REGION_AREA,
 )
 
 from src.image_io import load_image, save_image
@@ -15,6 +16,8 @@ from src.pixel_analysis import get_image_info, extract_pixels
 from src.clustering import apply_kmeans, get_dominant_colors
 from src.segmentation import segment_image, create_label_map
 from src.color_categorization import categorize_centers
+from src.region_detection import detect_regions, remove_small_regions
+from src.visualization import save_comparison
 
 
 def main():
@@ -55,8 +58,23 @@ def main():
     print("\n[ADIM 6] Renkler isimlendiriliyor...")
     color_names = categorize_centers(centers)
 
+    # 7. Bölge tespiti + gürültü temizleme
+    print("\n[ADIM 7] Bölge tespiti ve gürültü temizleme...")
+    region_map = detect_regions(label_map, K_CLUSTERS)
+    region_map, label_map = remove_small_regions(region_map, label_map, MIN_REGION_AREA)
+
+    # Temizlenmiş segmented görüntüyü kaydet
+    cleaned_segmented = segment_image(label_map.ravel(), centers, smoothed.shape)
+    save_image(cleaned_segmented, "cleaned_segmented.png", OUTPUT_DIR)
+
+    # Önce/sonra karşılaştırması
+    save_comparison(
+        segmented, cleaned_segmented,
+        "Temizleme Öncesi", "Temizleme Sonrası (66 bölge)",
+        "comparison_cleanup.png", OUTPUT_DIR,
+    )
+
     # --- Buradan sonrası adım adım eklenecek ---
-    # ADIM 7: Bölge tespiti (connected components)
     # ADIM 8: Kontur çıkarma
     # ADIM 9: Numara yerleştirme
     # ADIM 10: Tuval + legend render
