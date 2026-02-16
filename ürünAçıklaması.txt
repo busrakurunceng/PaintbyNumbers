@@ -1,0 +1,125 @@
+"Sayılarla Boyama" (Paint by Numbers) projesinin amacı: Bu projede, bir manzara görüntüsünü baştan sona analiz eden modüler bir görüntü işleme pipeline’ı geliştirmek. Amaç; bir resmi piksel seviyesinde inceleyerek RGB dağılımını analiz etmek, histogramlarla renk yoğunluklarını görselleştirmek, K-Means algoritması ile benzer renkleri gruplayarak dominant renkleri çıkarmak, ardından segmentasyon teknikleriyle görüntüyü bölgesel olarak ayırmak ve elde edilen renk kümelerini “numaralarla boyama” mantığına uygun kategorilere dönüştürmektir. Tüm süreç, OpenCV ve NumPy tabanlı bir mimari üzerinde, scikit-learn ile kümeleme uygulanarak ve modüler Python dosyaları halinde clean architecture prensiplerine uygun şekilde tasarlanacaktır; böylece hem görsel analizi hem de renk indirgeme (color quantization) ve bölgesel soyutlama adımlarını içeren, yeniden kullanılabilir ve portfolio düzeyinde bir görüntü işleme sistemi ortaya çıkacaktır.
+
+
+Sadece renkleri analiz etmek yetmez; görüntüyü bir "haritaya" dönüştürmemiz gerekir. Bir insan elinin boyayabileceği büyüklükte alanlar yaratmalı, sınırları kalemle çizilmiş gibi belirlemeli ve içlerine numaralar yerleştirmeliyiz.
+
+İşte bu projeyi hayata geçirmek için adım adım kuracağımız **"Paint by Numbers Algoritma Mimarisi"**:
+
+---
+
+### Adım 1: Görüntü Sadeleştirme (Preprocessing)
+
+Gerçek fotoğraflar çok gürültülüdür. Bir yaprağın üzerinde binlerce farklı yeşil tonu ve minik detaylar vardır. Eğer doğrudan işleme başlarsak, tuvalde iğne ucu kadar boyanması gereken milyonlarca alan çıkar. Bunu istemiyoruz.
+
+* **Ne Yapacağız?** Görüntüyü biraz "bulanıklaştırarak" detayları öldüreceğiz.
+* **Teknik:** `Bilateral Filter` veya `Median Blur` kullanacağız.
+* *Neden Gaussian Blur değil?* Çünkü kenarları (edges) korumamız lazım. Bilateral filtre, bir yüzün pürüzlerini yok ederken çene hattını keskin tutar. Bu, boyama alanlarının sınırlarının net kalması için kritiktir.
+
+
+
+### Adım 2: Renk Paletini Belirleme (Color Quantization)
+
+Tuval setlerinde genellikle 20-30 arası boya tüpü çıkar. Bizim de fotoğraftaki 16 milyon rengi bu sayıya indirmemiz gerek.
+
+* **Teknik:** Önceki cevabımda bahsettiğim **K-Means Clustering**.
+* **Mantık:**
+1. Algoritmaya "Bana bu resimdeki en baskın 24 rengi bul ()" diyeceğiz.
+2. Algoritma her pikselin rengini bu 24 merkezden en yakın olanına "yuvarlayacak".
+3. Sonuç: Artık resmimiz "gerçekçi" değil, "posterize" edilmiş, sadece 24 renkten oluşan bir hale gelecek.
+
+
+
+### Adım 3: Temizlik (Noise Removal & Blob Filtering)
+
+K-Means sonrası bile, ana renk alanlarının içinde "tek piksellik" hatalı noktalar kalabilir. İnsan eli tek bir pikseli boyayamaz.
+
+* **Sorun:** Büyük bir mavi gökyüzü alanının ortasında tek bir gri nokta kalması.
+* **Çözüm:** **Morfolojik İşlemler (Opening / Closing)** veya **Connected Components Analysis**.
+* Algoritmaya şunu diyeceğiz: *"Eğer bir renk alanı 50 pikselden daha küçükse, onu yok et ve komşu rengin içine kat."*
+* Böylece "boyanabilir" büyüklükte temiz adalar (blob) elde ederiz.
+
+
+
+### Adım 4: Sınırları Çizme (Edge Detection & Contours)
+
+Şimdi elimizde temizlenmiş, blok blok renklerden oluşan bir resim var. Bize bu blokların "sınır çizgileri" lazım.
+
+* **Teknik:** **Canny Edge Detection** veya OpenCV'deki `findContours` fonksiyonu.
+* **İşlem:** Her bir renk kümesinin etrafını dolaşarak bir çizgi çekeceğiz.
+* **Sonuç:** İşte o ekte gönderdiğin tuvaldeki siyah çizgileri elde ettik!
+
+### Adım 5: Numaralandırma (Labeling)
+
+En kritik kısım burası. Hangi boşluğun hangi renge (numaraya) ait olduğunu yazmamız gerek.
+
+* **Sorun:** Numarayı nereye yazacağız? Çizginin üstüne gelmemeli, alanın dışına taşmamalı.
+* **Çözüm:** Matematiksel **"Moment"** hesabı (Centroid bulma).
+* Her kapalı alanın (contour) "ağırlık merkezini" hesaplayacağız.
+* Eğer alan çok ince uzunsa (örneğin bir dal), merkez dışarıda kalabilir. Bu durumda `inscribed circle` (içine çizilebilecek en büyük çember) algoritması ile alanın en geniş yerine numarayı koyacağız.
+* Numara olarak da, o alanın K-Means'teki renk kodunu (Örn: "Renk 5") yazacağız.
+
+
+
+### Adım 6: Çıktı Üretimi (Rendering)
+
+Son olarak kullanıcıya iki şey vereceğiz:
+
+1. **Tuval Şablonu:** Sadece beyaz zemin, siyah çizgiler ve numaralar.
+2. **Referans Resim:** Hangi numaranın hangi renk olduğunu gösteren boyanmış hali.
+
+---
+
+### Proje İçin Kullanacağın "Çok Gizli" İpuçları 🕵️‍♂️
+
+Bir öğretmen tavsiyesi olarak, bu projede karşılaşacağın zorluklar ve çözümleri:
+
+1. **Metin Okunabilirliği:** Küçük alanlara numara sığdırmak zordur.
+* *Çözüm:* Font boyutunu alanın büyüklüğüne göre dinamik yapmalısın. Çok küçük alanlar için numara yazmak yerine, o alanları tamamen yoksayıp komşu renkle birleştirmek daha iyi bir kullanıcı deneyimi sunar.
+
+
+2. **Renklerin Birbirine Yakınlığı:** K-Means bazen birbirine çok yakın iki maviyi ayrı renk sanabilir.
+* *Çözüm:* Renkleri **RGB** değil **LAB** uzayında karşılaştır. İnsan gözü LAB uzayındaki farkları daha iyi ayırt eder. Çok yakın renkleri işlem başında birleştir.
+
+
+3. **Çizgilerin Kalınlığı:** Tuval baskısı için çizgiler çok ince olmamalı, çok kalın da olmamalı. Genellikle 1-2 piksellik gri (tam siyah değil) çizgiler, boyanın kapatması açısından daha iyidir.
+
+### Özet Kod Mantığı (Pseudo-Code)
+
+Sürecin Python/OpenCV ile iskeleti şöyle olacak:
+
+```python
+# 1. Resmi yükle ve yumuşat (Detayları azalt)
+image = cv2.imread("manzara.jpg")
+blurred = cv2.bilateralFilter(image, ...)
+
+# 2. Renkleri azalt (K-Means)
+centers, labels = run_kmeans(blurred, k=24)
+quantized_image = centers[labels] # Sadece 24 renkli resim
+
+# 3. Gürültü temizle (Küçük alanları yok et)
+cleaned_image = remove_small_areas(quantized_image, min_size=50)
+
+# 4. Kenarları bul (Sınır çizgileri)
+edges = cv2.Canny(cleaned_image, ...)
+contours, _ = cv2.findContours(edges, ...)
+
+# 5. Tuvali oluştur (Beyaz zemin)
+canvas = np.ones_like(image) * 255 
+
+# 6. Her konturu çiz ve numarayı yerleştir
+for contour in contours:
+    # Alanın sınırını çiz
+    cv2.drawContours(canvas, [contour], -1, (0,0,0), 1)
+    
+    # Alanın merkezini bul
+    M = cv2.moments(contour)
+    cx = int(M["m10"] / M["m00"])
+    cy = int(M["m01"] / M["m00"])
+    
+    # Rengin ID'sini (hangi boya tüpü olduğunu) al ve yaz
+    color_id = get_color_id(contour)
+    cv2.putText(canvas, str(color_id), (cx, cy), ...)
+
+```
+
+Bu yapı, o Trendyol linklerindeki ürünlerin dijital taslağını oluşturmanı sağlar.
