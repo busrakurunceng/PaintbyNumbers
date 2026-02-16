@@ -8,6 +8,7 @@ from config import (
     IMAGE_PATH, OUTPUT_DIR, K_CLUSTERS, RANDOM_STATE,
     BILATERAL_D, BILATERAL_SIGMA_COLOR, BILATERAL_SIGMA_SPACE,
     MIN_REGION_AREA,
+    LINE_COLOR, LINE_THICKNESS,
 )
 
 from src.image_io import load_image, save_image
@@ -17,6 +18,7 @@ from src.clustering import apply_kmeans, get_dominant_colors
 from src.segmentation import segment_image, create_label_map
 from src.color_categorization import categorize_centers
 from src.region_detection import detect_regions, remove_small_regions
+from src.contour_extraction import extract_contours, draw_contours_on_canvas
 from src.visualization import save_comparison
 
 
@@ -74,8 +76,13 @@ def main():
         "comparison_cleanup.png", OUTPUT_DIR,
     )
 
+    # 8. Kontur çıkarma
+    print("\n[ADIM 8] Konturlar çıkarılıyor...")
+    contour_list = extract_contours(region_map)
+    canvas = draw_contours_on_canvas(smoothed.shape, contour_list, LINE_COLOR, LINE_THICKNESS)
+    save_image(canvas, "canvas_outline.png", OUTPUT_DIR)
+
     # --- Buradan sonrası adım adım eklenecek ---
-    # ADIM 8: Kontur çıkarma
     # ADIM 9: Numara yerleştirme
     # ADIM 10: Tuval + legend render
 

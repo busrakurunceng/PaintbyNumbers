@@ -24,8 +24,8 @@ BILATERAL_SIGMA_SPACE = 75   # Koordinat uzayında sigma (mesafe toleransı)
 MIN_REGION_AREA = 500
 
 # --- Kontur ve Çizgi Ayarları ---
-LINE_COLOR = (80, 80, 80)    # Koyu gri (tam siyah değil, boya kapatsın diye)
-LINE_THICKNESS = 2            # Çizgi kalınlığı (piksel)
+LINE_COLOR = (70, 70, 70)    # Koyu gri (tam siyah değil, boya kapatsın diye)
+LINE_THICKNESS = 1            # Çizgi kalınlığı (piksel)
 
 # --- Numara Yerleştirme ---
 FONT_COLOR = (60, 60, 60)    # Numara rengi
