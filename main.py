@@ -21,6 +21,7 @@ from src.color_categorization import categorize_centers
 from src.region_detection import detect_regions, remove_small_regions
 from src.contour_extraction import extract_contours, draw_contours_on_canvas
 from src.number_placement import calculate_centroids, place_numbers
+from src.rendering import render_reference_image, render_color_legend
 from src.visualization import save_comparison
 
 
@@ -90,11 +91,17 @@ def main():
     numbered_canvas = place_numbers(canvas, centroids, FONT_COLOR, FONT_THICKNESS)
     save_image(numbered_canvas, "canvas_numbered.png", OUTPUT_DIR)
 
-    # --- Buradan sonrası adım adım eklenecek ---
-    # ADIM 10: Tuval + legend render
+    # 10. Referans resim + renk legendı
+    print("\n[ADIM 10] Referans resim ve renk legendı oluşturuluyor...")
+    reference = render_reference_image(
+        cleaned_segmented, contour_list, centroids,
+        LINE_COLOR, 1, FONT_COLOR, FONT_THICKNESS,
+    )
+    save_image(reference, "reference.png", OUTPUT_DIR)
+    render_color_legend(centers, color_names, OUTPUT_DIR)
 
     print("\n" + "=" * 55)
-    print("  MEVCUT PIPELINE TAMAMLANDI!")
+    print("  PIPELINE TAMAMLANDI!")
     print(f"  Çıktılar: {OUTPUT_DIR}")
     print("=" * 55)
 
