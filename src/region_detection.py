@@ -41,21 +41,49 @@ def detect_regions(label_map: np.ndarray, k: int) -> np.ndarray:
     return region_map
 
 
+def _lab_distance(centers: np.ndarray, label_a: int, label_b: int) -> float:
+    """İki renk kümesi arasındaki LAB mesafesini hesaplar.
+
+    LAB uzayında Euclidean mesafe, insan gözünün algıladığı
+    renk farkına yakındır. Yüksek mesafe = belirgin kontrast.
+
+    Args:
+        centers: Küme merkezleri (K, 3) - RGB.
+        label_a: Birinci küme ID'si.
+        label_b: İkinci küme ID'si.
+
+    Returns:
+        İki renk arasındaki LAB mesafesi (float).
+    """
+    rgb_a = np.uint8([[centers[label_a].astype(int)]])
+    rgb_b = np.uint8([[centers[label_b].astype(int)]])
+
+    lab_a = cv2.cvtColor(rgb_a, cv2.COLOR_RGB2LAB)[0][0].astype(np.float32)
+    lab_b = cv2.cvtColor(rgb_b, cv2.COLOR_RGB2LAB)[0][0].astype(np.float32)
+
+    return float(np.linalg.norm(lab_a - lab_b))
+
+
 def remove_small_regions(
     region_map: np.ndarray,
     label_map: np.ndarray,
     min_area: int,
+    centers: np.ndarray,
+    contrast_threshold: float = 30.0,
 ) -> tuple:
     """Küçük bölgeleri en büyük komşu bölgeye katar.
 
-    MIN_REGION_AREA altındaki bölgeler boyanamayacak kadar
-    küçüktür. Bu bölgelerin piksellerini, komşuları arasında
-    en çok temas ettiği bölgeye aktarır.
+    Kontrastı yüksek küçük bölgeler korunur (göz, burun gibi).
+    Bir bölge küçük olsa bile, komşusuyla renk farkı
+    contrast_threshold'u aşıyorsa silinmez.
 
     Args:
         region_map: Benzersiz bölge ID'leri (H, W).
         label_map: Renk küme etiketleri (H, W).
         min_area: Bu pikselden küçük bölgeler birleştirilir.
+        centers: Küme merkezleri (K, 3) - RGB.
+        contrast_threshold: LAB mesafesi bu değerin üstündeyse
+                            küçük bölge korunur (varsayılan: 30.0).
 
     Returns:
         cleaned_region_map: Temizlenmiş bölge haritası (H, W).
@@ -66,6 +94,7 @@ def remove_small_regions(
 
     unique_regions = np.unique(cleaned_region)
     removed_count = 0
+    preserved_count = 0
 
     for region_id in unique_regions:
         if region_id == 0:
@@ -97,16 +126,25 @@ def remove_small_regions(
 
         dominant_neighbor = np.bincount(neighbor_ids).argmax()
 
+        # Kontrast kontrolü: bölgenin rengi ile komşunun rengi arasındaki fark
+        region_label = int(cleaned_label[region_mask][0])
+        neighbor_label = int(cleaned_label[cleaned_region == dominant_neighbor][0])
+
+        distance = _lab_distance(centers, region_label, neighbor_label)
+
+        if distance > contrast_threshold:
+            preserved_count += 1
+            continue
+
         # Küçük bölgeyi komşuya kat
         cleaned_region[region_mask] = dominant_neighbor
-        # Renk etiketini de komşununki yap
-        neighbor_label = cleaned_label[cleaned_region == dominant_neighbor][0]
         cleaned_label[region_mask] = neighbor_label
         removed_count += 1
 
     remaining = len(np.unique(cleaned_region)) - 1  # 0 hariç
     print(f"[OK] Gürültü temizleme tamamlandı.")
     print(f"     Silinen küçük bölge: {removed_count}")
+    print(f"     Kontrast nedeniyle korunan: {preserved_count}")
     print(f"     Kalan bölge sayısı: {remaining}")
 
     return cleaned_region, cleaned_label

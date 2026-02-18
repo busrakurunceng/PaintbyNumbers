@@ -7,9 +7,9 @@
 from config import (
     IMAGE_PATH, OUTPUT_DIR, K_CLUSTERS, RANDOM_STATE,
     BILATERAL_D, BILATERAL_SIGMA_COLOR, BILATERAL_SIGMA_SPACE,
-    MIN_REGION_AREA,
+    MIN_REGION_RATIO, MIN_LABEL_RATIO, CONTRAST_THRESHOLD,
     LINE_COLOR, LINE_THICKNESS,
-    FONT_COLOR, FONT_THICKNESS, MIN_AREA_FOR_LABEL,
+    FONT_COLOR, FONT_THICKNESS,
 )
 
 from src.image_io import load_image, save_image
@@ -35,7 +35,13 @@ def main():
     # 1. Görüntü yükleme
     print("\n[ADIM 1] Görüntü yükleniyor...")
     image = load_image(IMAGE_PATH)
-    get_image_info(image)
+    info = get_image_info(image)
+
+    # Dinamik threshold hesaplama (piksel sayısına oransal)
+    total_pixels = info["total_pixels"]
+    min_region_area = int(total_pixels * MIN_REGION_RATIO)
+    min_area_for_label = int(total_pixels * MIN_LABEL_RATIO)
+    print(f"     Dinamik eşikler: min_region={min_region_area}px, min_label={min_area_for_label}px")
 
     # 2. Preprocessing (yumuşatma)
     print("\n[ADIM 2] Görüntü yumuşatılıyor...")
@@ -66,7 +72,9 @@ def main():
     # 7. Bölge tespiti + gürültü temizleme
     print("\n[ADIM 7] Bölge tespiti ve gürültü temizleme...")
     region_map = detect_regions(label_map, K_CLUSTERS)
-    region_map, label_map = remove_small_regions(region_map, label_map, MIN_REGION_AREA)
+    region_map, label_map = remove_small_regions(
+        region_map, label_map, min_region_area, centers, CONTRAST_THRESHOLD
+    )
 
     # Temizlenmiş segmented görüntüyü kaydet
     cleaned_segmented = segment_image(label_map.ravel(), centers, smoothed.shape)
@@ -87,7 +95,7 @@ def main():
 
     # 9. Numara yerleştirme
     print("\n[ADIM 9] Numaralar yerleştiriliyor...")
-    centroids = calculate_centroids(region_map, label_map, MIN_AREA_FOR_LABEL)
+    centroids = calculate_centroids(region_map, label_map, min_area_for_label)
     numbered_canvas = place_numbers(canvas, centroids, FONT_COLOR, FONT_THICKNESS)
     save_image(numbered_canvas, "canvas_numbered.png", OUTPUT_DIR)
 

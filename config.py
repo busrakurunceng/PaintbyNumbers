@@ -5,7 +5,7 @@
 # Magic number kullanmak yerine bu dosyadan import edilir.
 
 # --- Görüntü Ayarları ---
-IMAGE_PATH = "data/sample.jpg"
+IMAGE_PATH = "data/aslan resmi.jpg"
 OUTPUT_DIR = "outputs/"
 
 # --- K-Means Kümeleme ---
@@ -15,19 +15,22 @@ RANDOM_STATE = 42
 # --- Preprocessing (Görüntü Yumuşatma) ---
 # Bilateral Filter parametreleri
 # Kenarları koruyarak gürültüyü azaltır
-BILATERAL_D = 9              # Filtre çapı (piksel komşuluğu)
-BILATERAL_SIGMA_COLOR = 75   # Renk uzayında sigma (benzer renk toleransı)
-BILATERAL_SIGMA_SPACE = 75   # Koordinat uzayında sigma (mesafe toleransı)
+BILATERAL_D = 22              # Filtre çapı (piksel komşuluğu)
+BILATERAL_SIGMA_COLOR = 50   # Renk uzayında sigma (benzer renk toleransı)
+BILATERAL_SIGMA_SPACE = 50   # Koordinat uzayında sigma (mesafe toleransı)
 
-# --- Bölge Temizleme ---
-# Bu pikselden küçük bölgeler komşu renge katılır
-MIN_REGION_AREA = 500
+# --- Bölge Temizleme (Dinamik Threshold) ---
+# Sabit piksel yerine görüntü çözünürlüğüne oransal çalışır.
+# Gerçek piksel değeri main.py'da hesaplanır: total_pixels * oran
+MIN_REGION_RATIO = 0.0002    # Bu orandan küçük bölgeler komşu renge katılır
+CONTRAST_THRESHOLD = 30.0    # LAB mesafesi bu değerin üstündeyse küçük bölge korunur
+                             # Göz, burun gibi yüksek kontrastlı detayları korur
 
 # --- Kontur ve Çizgi Ayarları ---
-LINE_COLOR = (70, 70, 70)    # Koyu gri (tam siyah değil, boya kapatsın diye)
+LINE_COLOR = (210, 210, 210)    # açık gri (tam beyaz değil, gözüksün diye)
 LINE_THICKNESS = 1            # Çizgi kalınlığı (piksel)
 
 # --- Numara Yerleştirme ---
-FONT_COLOR = (60, 60, 60)    # Numara rengi
+FONT_COLOR = (210, 210, 210)    # Numara rengi
 FONT_THICKNESS = 1            # Numara kalınlığı
-MIN_AREA_FOR_LABEL = 800     # Bu pikselden küçük alanlara numara yazılmaz
+MIN_LABEL_RATIO = 0.0004     # Bu orandan küçük alanlara numara yazılmaz
