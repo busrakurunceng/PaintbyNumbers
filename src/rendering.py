@@ -51,12 +51,16 @@ def render_reference_image(
 
         if c["area"] > 10000:
             font_scale = 0.5
-        elif c["area"] > 3000:
+        elif c["area"] > 5000:
             font_scale = 0.4
         else:
             font_scale = 0.3
 
         (tw, th), _ = cv2.getTextSize(text, font, font_scale, font_thickness)
+
+        if tw > c["bbox_w"] * 0.8 or th > c["bbox_h"] * 0.8:
+            continue
+
         tx = c["cx"] - tw // 2
         ty = c["cy"] + th // 2
 
