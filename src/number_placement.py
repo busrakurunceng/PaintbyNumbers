@@ -1,9 +1,9 @@
 # ==================================================
 # NUMBER PLACEMENT - Numara Yerleştirme
 # ==================================================
-# Her bölgenin ağırlık merkezine (centroid) o bölgenin
-# renk numarasını yazar. Çok küçük alanlara numara yazılmaz.
-# Font boyutu alan büyüklüğüne göre dinamik ayarlanır.
+# Distance transform ile her bölgenin en geniş iç noktasını
+# bulur, dinamik font ölçekleme ile numarayı yerleştirir.
+# Bounding box yerine inscribed circle yöntemi kullanılır.
 
 import cv2
 import numpy as np
@@ -14,11 +14,10 @@ def calculate_centroids(
     label_map: np.ndarray,
     min_area: int = 800,
 ) -> list:
-    """Her bölgenin merkez koordinatını ve renk ID'sini hesaplar.
+    """Her bölgenin en geniş iç noktasını ve iç çember yarıçapını hesaplar.
 
-    cv2.moments() ile ağırlık merkezi bulunur.
-    Çok küçük alanlar atlanır. Ayrıca bölgenin bounding box
-    boyutları da hesaplanır (numara sığma kontrolü için).
+    Distance transform ile bölge içindeki en uzak noktayı (kenarlardan)
+    bulur. Bu nokta, numaranın en rahat sığacağı yerdir.
 
     Args:
         region_map: Benzersiz bölge ID'leri (H, W).
@@ -26,7 +25,7 @@ def calculate_centroids(
         min_area: Bu pikselden küçük alanlara numara konmaz.
 
     Returns:
-        centroids: Her eleman {"region_id", "color_id", "cx", "cy", "area", "bbox_w", "bbox_h"} dict'i.
+        centroids: Her eleman {"region_id", "color_id", "cx", "cy", "area", "radius"} dict'i.
     """
     centroids = []
     unique_regions = np.unique(region_map)
@@ -41,18 +40,14 @@ def calculate_centroids(
         if area < min_area:
             continue
 
-        moments = cv2.moments(mask)
-        if moments["m00"] == 0:
+        # Distance transform: her pikselin en yakın kenara mesafesi
+        dist = cv2.distanceTransform(mask, cv2.DIST_L2, 5)
+        _, max_radius, _, max_loc = cv2.minMaxLoc(dist)
+
+        if max_radius < 1:
             continue
 
-        cx = int(moments["m10"] / moments["m00"])
-        cy = int(moments["m01"] / moments["m00"])
-
-        # Bounding box: numaranın sığıp sığmayacağını anlamak için
-        coords = np.where(mask > 0)
-        bbox_h = int(coords[0].max() - coords[0].min())
-        bbox_w = int(coords[1].max() - coords[1].min())
-
+        cx, cy = max_loc  # En geniş iç noktanın koordinatları
         color_id = int(label_map[region_map == region_id][0])
 
         centroids.append({
@@ -61,14 +56,47 @@ def calculate_centroids(
             "cx": cx,
             "cy": cy,
             "area": area,
-            "bbox_w": bbox_w,
-            "bbox_h": bbox_h,
+            "radius": float(max_radius),
         })
 
-    print(f"[OK] Centroid hesaplandı.")
+    print(f"[OK] Centroid hesaplandı (distance transform).")
     print(f"     Numaralanacak bölge: {len(centroids)}")
 
     return centroids
+
+
+def _fit_font_scale(text, font, radius, thickness):
+    """Metnin iç çembere sığacağı font ölçeğini hesaplar.
+
+    radius'a oransal scale hesaplar, ardından metnin
+    gerçekten sığıp sığmadığını doğrular. Sığmıyorsa
+    küçülterek tekrar dener.
+
+    Args:
+        text: Yazılacak metin.
+        font: OpenCV font tipi.
+        radius: İç çember yarıçapı (piksel).
+        thickness: Font kalınlığı.
+
+    Returns:
+        Uygun font_scale veya None (sığmıyorsa).
+    """
+    MAX_SCALE = 0.45
+    MIN_SCALE = 0.15
+
+    scale = min(MAX_SCALE, radius / 30)
+    scale = max(scale, MIN_SCALE)
+
+    diameter = radius * 2 * 0.85
+
+    # Sığana kadar küçült
+    while scale >= MIN_SCALE:
+        (tw, th), _ = cv2.getTextSize(text, font, scale, thickness)
+        if tw < diameter and th < diameter:
+            return scale
+        scale -= 0.02
+
+    return None
 
 
 def place_numbers(
@@ -79,8 +107,8 @@ def place_numbers(
 ) -> np.ndarray:
     """Tuval üzerine renk numaralarını yazar.
 
-    Font boyutu alanın büyüklüğüne göre dinamik ayarlanır.
-    Numara mümkün olduğunca merkezde kalır.
+    Distance transform'dan gelen iç çember yarıçapına göre
+    dinamik font ölçekleme yapar. Sığmayan numaralar yazılmaz.
 
     Args:
         canvas: Beyaz zemin + kontur çizgileri (H, W, 3).
@@ -92,33 +120,39 @@ def place_numbers(
         numbered_canvas: Numaralar eklenmiş tuval (H, W, 3).
     """
     result = canvas.copy()
+    h, w = canvas.shape[:2]
     font = cv2.FONT_HERSHEY_SIMPLEX
     placed = 0
     skipped = 0
 
     for c in centroids:
-        area = c["area"]
         text = str(c["color_id"])
+        radius = c["radius"]
 
-        # Alan büyüklüğüne göre font boyutu
-        if area > 10000:
-            font_scale = 0.5
-        elif area > 5000:
-            font_scale = 0.4
-        else:
-            font_scale = 0.3
+        font_scale = _fit_font_scale(text, font, radius, font_thickness)
 
-        # Metnin boyutunu hesapla
-        (tw, th), _ = cv2.getTextSize(text, font, font_scale, font_thickness)
-
-        # Sığma kontrolü: metin bölgenin bounding box'ından büyükse atla
-        if tw > c["bbox_w"] * 0.8 or th > c["bbox_h"] * 0.8:
+        if font_scale is None:
             skipped += 1
             continue
 
-        # Merkeze oturt
+        (tw, th), _ = cv2.getTextSize(text, font, font_scale, font_thickness)
         tx = c["cx"] - tw // 2
         ty = c["cy"] + th // 2
+
+        # Görüntü sınırı kontrolü: taşanları içeri çek veya atla
+        if tx < 0:
+            tx = 1
+        if tx + tw > w:
+            tx = w - tw - 1
+        if ty - th < 0:
+            ty = th + 1
+        if ty > h:
+            ty = h - 1
+
+        # Hala sınır dışındaysa atla
+        if tx < 0 or ty - th < 0 or tx + tw > w or ty > h:
+            skipped += 1
+            continue
 
         cv2.putText(result, text, (tx, ty), font, font_scale,
                     font_color, font_thickness, cv2.LINE_AA)

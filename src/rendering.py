@@ -41,28 +41,37 @@ def render_reference_image(
         reference: Renkli zemin + çizgiler + numaralar (H, W, 3).
     """
     reference = cleaned_segmented.copy()
+    h, w = reference.shape[:2]
 
     contours_only = [contour for _, contour in contour_list]
     cv2.drawContours(reference, contours_only, -1, line_color, line_thickness)
 
+    from src.number_placement import _fit_font_scale
+
     font = cv2.FONT_HERSHEY_SIMPLEX
     for c in centroids:
         text = str(c["color_id"])
+        radius = c["radius"]
 
-        if c["area"] > 10000:
-            font_scale = 0.5
-        elif c["area"] > 5000:
-            font_scale = 0.4
-        else:
-            font_scale = 0.3
-
-        (tw, th), _ = cv2.getTextSize(text, font, font_scale, font_thickness)
-
-        if tw > c["bbox_w"] * 0.8 or th > c["bbox_h"] * 0.8:
+        font_scale = _fit_font_scale(text, font, radius, font_thickness)
+        if font_scale is None:
             continue
 
+        (tw, th), _ = cv2.getTextSize(text, font, font_scale, font_thickness)
         tx = c["cx"] - tw // 2
         ty = c["cy"] + th // 2
+
+        if tx < 0:
+            tx = 1
+        if tx + tw > w:
+            tx = w - tw - 1
+        if ty - th < 0:
+            ty = th + 1
+        if ty > h:
+            ty = h - 1
+
+        if tx < 0 or ty - th < 0 or tx + tw > w or ty > h:
+            continue
 
         cv2.putText(reference, text, (tx, ty), font, font_scale,
                     font_color, font_thickness, cv2.LINE_AA)

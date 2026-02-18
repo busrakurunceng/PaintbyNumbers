@@ -4,10 +4,13 @@
 # Şu an mevcut olan modülleri sırayla çalıştırır.
 # Yeni modüller eklendikçe buraya adım adım eklenecek.
 
+import numpy as np
+
 from config import (
     IMAGE_PATH, OUTPUT_DIR, K_CLUSTERS, RANDOM_STATE,
     BILATERAL_D, BILATERAL_SIGMA_COLOR, BILATERAL_SIGMA_SPACE,
-    MIN_REGION_RATIO, MIN_LABEL_RATIO, CONTRAST_THRESHOLD,
+    MIN_REGION_RATIO_DETAIL, MIN_REGION_RATIO_BACKGROUND,
+    DETAIL_EDGE_THRESHOLD, CONTRAST_THRESHOLD, MIN_LABEL_RATIO,
     LINE_COLOR, LINE_THICKNESS,
     FONT_COLOR, FONT_THICKNESS,
 )
@@ -18,7 +21,7 @@ from src.pixel_analysis import get_image_info, extract_pixels
 from src.clustering import apply_kmeans, get_dominant_colors
 from src.segmentation import segment_image, create_label_map
 from src.color_categorization import categorize_centers
-from src.region_detection import detect_regions, remove_small_regions
+from src.region_detection import detect_regions, build_detail_map, remove_small_regions
 from src.contour_extraction import extract_contours, draw_contours_on_canvas
 from src.number_placement import calculate_centroids, place_numbers
 from src.rendering import render_reference_image, render_color_legend
@@ -39,9 +42,10 @@ def main():
 
     # Dinamik threshold hesaplama (piksel sayısına oransal)
     total_pixels = info["total_pixels"]
-    min_region_area = int(total_pixels * MIN_REGION_RATIO)
+    min_area_detail = int(total_pixels * MIN_REGION_RATIO_DETAIL)
+    min_area_background = int(total_pixels * MIN_REGION_RATIO_BACKGROUND)
     min_area_for_label = int(total_pixels * MIN_LABEL_RATIO)
-    print(f"     Dinamik eşikler: min_region={min_region_area}px, min_label={min_area_for_label}px")
+    print(f"     Eşikler: detay={min_area_detail}px, arka plan={min_area_background}px, label={min_area_for_label}px")
 
     # 2. Preprocessing (yumuşatma)
     print("\n[ADIM 2] Görüntü yumuşatılıyor...")
@@ -69,11 +73,14 @@ def main():
     print("\n[ADIM 6] Renkler isimlendiriliyor...")
     color_names = categorize_centers(centers)
 
-    # 7. Bölge tespiti + gürültü temizleme
-    print("\n[ADIM 7] Bölge tespiti ve gürültü temizleme...")
+    # 7. Detay haritası + bölge tespiti + gürültü temizleme
+    print("\n[ADIM 7] Detay haritası ve bölge tespiti...")
+    detail_map = build_detail_map(smoothed)
     region_map = detect_regions(label_map, K_CLUSTERS)
     region_map, label_map = remove_small_regions(
-        region_map, label_map, min_region_area, centers, CONTRAST_THRESHOLD
+        region_map, label_map, centers, detail_map,
+        min_area_detail, min_area_background,
+        CONTRAST_THRESHOLD, DETAIL_EDGE_THRESHOLD,
     )
 
     # Temizlenmiş segmented görüntüyü kaydet
@@ -81,9 +88,10 @@ def main():
     save_image(cleaned_segmented, "cleaned_segmented.png", OUTPUT_DIR)
 
     # Önce/sonra karşılaştırması
+    region_count = len(np.unique(region_map)) - 1
     save_comparison(
         segmented, cleaned_segmented,
-        "Temizleme Öncesi", "Temizleme Sonrası (66 bölge)",
+        "Temizleme Öncesi", f"Temizleme Sonrası ({region_count} bölge)",
         "comparison_cleanup.png", OUTPUT_DIR,
     )
 

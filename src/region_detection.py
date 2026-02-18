@@ -1,10 +1,10 @@
 # ==================================================
 # REGION DETECTION - Bölge Tespiti
 # ==================================================
-# label_map'te aynı renk etiketi farklı konumlarda olabilir.
-# Örn: "Mavi" hem gökyüzünde hem gölde varsa bunlar ayrı bölgeler.
-# Connected component analysis ile her bağlı alanı ayırır,
-# küçük gürültü bölgelerini komşu renge katar.
+# Detay haritası bazlı çift eşik sistemi:
+# - Detay bölgelerinde (göz, burun, yüz) düşük threshold
+# - Arka plan bölgelerinde yüksek threshold
+# Edge yoğunluğuna göre otomatik karar verir.
 
 import cv2
 import numpy as np
@@ -13,11 +13,8 @@ import numpy as np
 def detect_regions(label_map: np.ndarray, k: int) -> np.ndarray:
     """Her renk kümesini ayrı bağlı bölgelere ayırır.
 
-    Aynı renk etiketine sahip ama fiziksel olarak ayrı
-    pikselleri farklı bölge ID'leri ile işaretler.
-
     Args:
-        label_map: 2D etiket haritası (H, W) - her değer bir küme ID'si.
+        label_map: 2D etiket haritası (H, W).
         k: Toplam küme sayısı.
 
     Returns:
@@ -30,7 +27,6 @@ def detect_regions(label_map: np.ndarray, k: int) -> np.ndarray:
         mask = (label_map == label_id).astype(np.uint8)
         num_regions, component_map = cv2.connectedComponents(mask)
 
-        # 0 = arka plan, 1+ = bağlı bölgeler
         for region_id in range(1, num_regions):
             region_counter += 1
             region_map[component_map == region_id] = region_counter
@@ -41,20 +37,38 @@ def detect_regions(label_map: np.ndarray, k: int) -> np.ndarray:
     return region_map
 
 
-def _lab_distance(centers: np.ndarray, label_a: int, label_b: int) -> float:
-    """İki renk kümesi arasındaki LAB mesafesini hesaplar.
+def build_detail_map(image: np.ndarray) -> np.ndarray:
+    """Edge yoğunluğuna dayalı detay haritası oluşturur.
 
-    LAB uzayında Euclidean mesafe, insan gözünün algıladığı
-    renk farkına yakındır. Yüksek mesafe = belirgin kontrast.
+    Canny edge detection + Gaussian blur ile her pikselin
+    ne kadar "detay bölgesinde" olduğunu 0-1 arasında verir.
+    Yüksek değer = çok detay (göz, burun, yele geçişleri).
 
     Args:
-        centers: Küme merkezleri (K, 3) - RGB.
-        label_a: Birinci küme ID'si.
-        label_b: İkinci küme ID'si.
+        image: RGB formatında numpy dizisi (H, W, 3).
 
     Returns:
-        İki renk arasındaki LAB mesafesi (float).
+        detail_map: (H, W) float32, 0.0-1.0 arasında normalize.
     """
+    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    edges = cv2.Canny(gray, 50, 150)
+
+    # Edge'leri bulanıklaştırarak "detay yoğunluğu" haritası oluştur
+    detail_map = cv2.GaussianBlur(edges.astype(np.float32), (31, 31), 0)
+
+    # 0-1 arasına normalize et
+    max_val = detail_map.max()
+    if max_val > 0:
+        detail_map /= max_val
+
+    print(f"[OK] Detay haritası oluşturuldu.")
+    print(f"     Detay yoğunluğu: min={detail_map.min():.2f}, max={detail_map.max():.2f}")
+
+    return detail_map
+
+
+def _lab_distance(centers: np.ndarray, label_a: int, label_b: int) -> float:
+    """İki renk kümesi arasındaki LAB mesafesini hesaplar."""
     rgb_a = np.uint8([[centers[label_a].astype(int)]])
     rgb_b = np.uint8([[centers[label_b].astype(int)]])
 
@@ -67,34 +81,39 @@ def _lab_distance(centers: np.ndarray, label_a: int, label_b: int) -> float:
 def remove_small_regions(
     region_map: np.ndarray,
     label_map: np.ndarray,
-    min_area: int,
     centers: np.ndarray,
-    contrast_threshold: float = 30.0,
+    detail_map: np.ndarray,
+    min_area_detail: int,
+    min_area_background: int,
+    contrast_threshold: float = 40.0,
+    detail_threshold: float = 0.3,
 ) -> tuple:
-    """Küçük bölgeleri en büyük komşu bölgeye katar.
+    """Çift eşik sistemiyle küçük bölgeleri temizler.
 
-    Kontrastı yüksek küçük bölgeler korunur (göz, burun gibi).
-    Bir bölge küçük olsa bile, komşusuyla renk farkı
-    contrast_threshold'u aşıyorsa silinmez.
+    Detay yoğunluğu yüksek bölgelerde düşük threshold,
+    arka plan bölgelerinde yüksek threshold uygulanır.
+    Ek olarak: çok koyu + küçük alanlar (göz bebekleri) korunur.
 
     Args:
         region_map: Benzersiz bölge ID'leri (H, W).
         label_map: Renk küme etiketleri (H, W).
-        min_area: Bu pikselden küçük bölgeler birleştirilir.
         centers: Küme merkezleri (K, 3) - RGB.
-        contrast_threshold: LAB mesafesi bu değerin üstündeyse
-                            küçük bölge korunur (varsayılan: 30.0).
+        detail_map: Detay yoğunluğu haritası (H, W), 0-1.
+        min_area_detail: Detay bölgelerinde minimum alan.
+        min_area_background: Arka plan bölgelerinde minimum alan.
+        contrast_threshold: LAB mesafesi bu değerin üstündeyse bölge korunur.
+        detail_threshold: Bu yoğunluğun üstü "detay bölgesi" sayılır.
 
     Returns:
-        cleaned_region_map: Temizlenmiş bölge haritası (H, W).
-        cleaned_label_map: Güncellenmiş renk etiket haritası (H, W).
+        cleaned_region_map, cleaned_label_map
     """
     cleaned_region = region_map.copy()
     cleaned_label = label_map.copy()
 
     unique_regions = np.unique(cleaned_region)
     removed_count = 0
-    preserved_count = 0
+    preserved_contrast = 0
+    preserved_dark = 0
 
     for region_id in unique_regions:
         if region_id == 0:
@@ -103,10 +122,26 @@ def remove_small_regions(
         region_mask = (cleaned_region == region_id)
         area = np.sum(region_mask)
 
+        # Bölgenin detay yoğunluğunu hesapla
+        region_detail = detail_map[region_mask].mean()
+        is_detail_zone = region_detail > detail_threshold
+
+        # Çift eşik: detay bölgesinde düşük, arka planda yüksek
+        min_area = min_area_detail if is_detail_zone else min_area_background
+
         if area >= min_area:
             continue
 
-        # Bölgenin 1 piksel genişletilmiş komşuluğunu bul
+        # Koyu detay koruması: çok koyu + küçük = göz bebekleri vb.
+        region_label = int(cleaned_label[region_mask][0])
+        rgb = centers[region_label]
+        mean_intensity = rgb.mean()
+
+        if mean_intensity < 50 and area > 20:
+            preserved_dark += 1
+            continue
+
+        # Komşu bul
         dilated = cv2.dilate(
             region_mask.astype(np.uint8),
             np.ones((3, 3), np.uint8),
@@ -117,7 +152,6 @@ def remove_small_regions(
         if np.sum(neighbor_mask) == 0:
             continue
 
-        # Komşular arasında en sık görülen bölge ID'sini bul
         neighbor_ids = cleaned_region[neighbor_mask]
         neighbor_ids = neighbor_ids[neighbor_ids != 0]
 
@@ -126,14 +160,12 @@ def remove_small_regions(
 
         dominant_neighbor = np.bincount(neighbor_ids).argmax()
 
-        # Kontrast kontrolü: bölgenin rengi ile komşunun rengi arasındaki fark
-        region_label = int(cleaned_label[region_mask][0])
+        # Kontrast kontrolü
         neighbor_label = int(cleaned_label[cleaned_region == dominant_neighbor][0])
-
         distance = _lab_distance(centers, region_label, neighbor_label)
 
         if distance > contrast_threshold:
-            preserved_count += 1
+            preserved_contrast += 1
             continue
 
         # Küçük bölgeyi komşuya kat
@@ -141,10 +173,11 @@ def remove_small_regions(
         cleaned_label[region_mask] = neighbor_label
         removed_count += 1
 
-    remaining = len(np.unique(cleaned_region)) - 1  # 0 hariç
+    remaining = len(np.unique(cleaned_region)) - 1
     print(f"[OK] Gürültü temizleme tamamlandı.")
-    print(f"     Silinen küçük bölge: {removed_count}")
-    print(f"     Kontrast nedeniyle korunan: {preserved_count}")
+    print(f"     Silinen: {removed_count}")
+    print(f"     Korunan (kontrast): {preserved_contrast}")
+    print(f"     Korunan (koyu detay): {preserved_dark}")
     print(f"     Kalan bölge sayısı: {remaining}")
 
     return cleaned_region, cleaned_label
