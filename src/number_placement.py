@@ -139,20 +139,16 @@ def place_numbers(
         tx = c["cx"] - tw // 2
         ty = c["cy"] + th // 2
 
-        # Görüntü sınırı kontrolü: taşanları içeri çek veya atla
-        if tx < 0:
-            tx = 1
-        if tx + tw > w:
-            tx = w - tw - 1
-        if ty - th < 0:
-            ty = th + 1
-        if ty > h:
-            ty = h - 1
-
-        # Hala sınır dışındaysa atla
-        if tx < 0 or ty - th < 0 or tx + tw > w or ty > h:
-            skipped += 1
-            continue
+        # Kenar taşması varsa metni içeri çek (numara her zaman yazılsın)
+        margin = 4
+        if tx < margin:
+            tx = margin
+        if tx + tw > w - margin:
+            tx = w - tw - margin
+        if ty - th < margin:
+            ty = th + margin
+        if ty > h - margin:
+            ty = h - margin
 
         cv2.putText(result, text, (tx, ty), font, font_scale,
                     font_color, font_thickness, cv2.LINE_AA)

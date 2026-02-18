@@ -61,17 +61,15 @@ def render_reference_image(
         tx = c["cx"] - tw // 2
         ty = c["cy"] + th // 2
 
-        if tx < 0:
-            tx = 1
-        if tx + tw > w:
-            tx = w - tw - 1
-        if ty - th < 0:
-            ty = th + 1
-        if ty > h:
-            ty = h - 1
-
-        if tx < 0 or ty - th < 0 or tx + tw > w or ty > h:
-            continue
+        margin = 4
+        if tx < margin:
+            tx = margin
+        if tx + tw > w - margin:
+            tx = w - tw - margin
+        if ty - th < margin:
+            ty = th + margin
+        if ty > h - margin:
+            ty = h - margin
 
         cv2.putText(reference, text, (tx, ty), font, font_scale,
                     font_color, font_thickness, cv2.LINE_AA)
