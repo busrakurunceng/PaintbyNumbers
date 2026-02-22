@@ -4,13 +4,19 @@
 # Tüm sabit değerler burada tanımlanır.
 # Magic number kullanmak yerine bu dosyadan import edilir.
 
+# --- Mod: "general" = manzara/hayvan (aslan vb.), "portrait" = yüz/couple ---
+MODE = "portrait"
+
 # --- Görüntü Ayarları ---
-IMAGE_PATH = "data/aslan resmi.jpg"
+IMAGE_PATH = "data/couple.jpg"
 OUTPUT_DIR = "outputs/"
 
 # --- K-Means Kümeleme ---
-K_CLUSTERS = 16
 RANDOM_STATE = 42
+if MODE == "portrait":
+    K_CLUSTERS = 22
+else:
+    K_CLUSTERS = 16
 
 # --- Preprocessing (Görüntü Yumuşatma) ---
 # Bilateral Filter parametreleri
@@ -22,10 +28,16 @@ BILATERAL_SIGMA_SPACE = 50   # Koordinat uzayında sigma (mesafe toleransı)
 # --- Bölge Temizleme (Çift Eşik Sistemi) ---
 # Detay bölgelerinde (göz, burun, yüz) düşük threshold,
 # arka plan bölgelerinde yüksek threshold uygulanır.
-MIN_REGION_RATIO_DETAIL = 0.0005      # Detay bölgelerinde: küçük alanlar korunur
-MIN_REGION_RATIO_BACKGROUND = 0.003   # Arka planda: agresif temizlik
-DETAIL_EDGE_THRESHOLD = 0.3           # Bu yoğunluğun üstü "detay" sayılır
-CONTRAST_THRESHOLD = 60.0             # LAB mesafesi bu değerin üstündeyse bölge korunur
+if MODE == "portrait":
+    MIN_REGION_RATIO_DETAIL = 0.0002
+    MIN_REGION_RATIO_BACKGROUND = 0.002
+    DETAIL_EDGE_THRESHOLD = 0.25
+    CONTRAST_THRESHOLD = 55.0
+else:
+    MIN_REGION_RATIO_DETAIL = 0.0005
+    MIN_REGION_RATIO_BACKGROUND = 0.003
+    DETAIL_EDGE_THRESHOLD = 0.3
+    CONTRAST_THRESHOLD = 60.0
 
 # --- Kontur ve Çizgi Ayarları ---
 LINE_COLOR = (210, 210, 210)    # açık gri (tam beyaz değil, gözüksün diye)
