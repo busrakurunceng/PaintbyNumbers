@@ -8,6 +8,41 @@ import cv2
 import numpy as np
 
 
+def _smooth_contour_points(contour: np.ndarray, window: int) -> np.ndarray:
+    """Kontur noktalarını döngüsel hareketli ortalama ile yumuşatır.
+    Saç çizgisi ve göz gibi sınırların tırtıklı görünümünü azaltır.
+    """
+    if contour is None or len(contour) < window:
+        return contour
+    n = len(contour)
+    pts = contour.reshape(n, 2).astype(np.float64)
+    half = window // 2
+    out = np.zeros_like(pts)
+    for i in range(n):
+        for j in range(-half, half + 1):
+            idx = (i + j) % n
+            out[i] += pts[idx]
+        out[i] /= window
+    return out.astype(np.int32).reshape(-1, 1, 2)
+
+
+def smooth_contours(
+    contour_list: list,
+    window_size: int = 5,
+) -> list:
+    """Her (region_id, contour) çiftindeki konturu yumuşatır.
+    Portrait modunda saç ve göz sınırlarını daha doğal yapar.
+    """
+    if window_size < 3:
+        return contour_list
+    out = []
+    for region_id, contour in contour_list:
+        smoothed = _smooth_contour_points(contour, window_size)
+        out.append((region_id, smoothed))
+    print(f"[OK] Konturlar yumuşatıldı (pencere={window_size}).")
+    return out
+
+
 def extract_contours(region_map: np.ndarray) -> list:
     """Her bölgenin konturlarını çıkarır.
 

@@ -7,6 +7,7 @@
 import numpy as np
 
 from config import (
+    MODE,
     IMAGE_PATH, OUTPUT_DIR, K_CLUSTERS, RANDOM_STATE,
     BILATERAL_D, BILATERAL_SIGMA_COLOR, BILATERAL_SIGMA_SPACE,
     MIN_REGION_RATIO_DETAIL, MIN_REGION_RATIO_BACKGROUND,
@@ -22,7 +23,7 @@ from src.clustering import apply_kmeans, get_dominant_colors
 from src.segmentation import segment_image, create_label_map
 from src.color_categorization import categorize_centers
 from src.region_detection import detect_regions, build_detail_map, remove_small_regions
-from src.contour_extraction import extract_contours, draw_contours_on_canvas
+from src.contour_extraction import extract_contours, smooth_contours, draw_contours_on_canvas
 from src.number_placement import calculate_centroids, place_numbers
 from src.rendering import render_reference_image, render_color_legend
 from src.visualization import save_comparison
@@ -81,6 +82,7 @@ def main():
         region_map, label_map, centers, detail_map,
         min_area_detail, min_area_background,
         CONTRAST_THRESHOLD, DETAIL_EDGE_THRESHOLD,
+        portrait_mode=(MODE == "portrait"),
     )
 
     # Temizlenmiş segmented görüntüyü kaydet
@@ -95,9 +97,11 @@ def main():
         "comparison_cleanup.png", OUTPUT_DIR,
     )
 
-    # 8. Kontur çıkarma
+    # 8. Kontur çıkarma (portrait: sınırları yumuşat)
     print("\n[ADIM 8] Konturlar çıkarılıyor...")
     contour_list = extract_contours(region_map)
+    if MODE == "portrait":
+        contour_list = smooth_contours(contour_list, window_size=5)
     canvas = draw_contours_on_canvas(smoothed.shape, contour_list, LINE_COLOR, LINE_THICKNESS)
     save_image(canvas, "canvas_outline.png", OUTPUT_DIR)
 
